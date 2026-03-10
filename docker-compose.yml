@@ -1,0 +1,37 @@
+version: "3.9"
+
+# SQLite is file-based — no database server container needed.
+# healthai.db is auto-created by the backend on first start.
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./.env:/app/.env # share env vars
+      - healthai_db:/app # persist SQLite DB file
+    environment:
+      - DATABASE_URL=sqlite:///./healthai.db
+      - FRONTEND_URL=http://localhost
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        - VITE_API_URL=http://localhost:8000
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  healthai_db:
