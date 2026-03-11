@@ -65,6 +65,7 @@ class Medication(Base):
     notes         = Column(String,      nullable=True)  # e.g. "after food", "before sleep"
     status        = Column(String(10),  nullable=False, default="pending")
     date          = Column(String(10),  nullable=False)  # "YYYY-MM-DD"
+    end_date      = Column(String(10),  nullable=True)   # "YYYY-MM-DD" or None = ongoing
     created_at    = Column(DateTime,    nullable=False, server_default=func.now())
 
     user = relationship("User", back_populates="medications")

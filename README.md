@@ -315,8 +315,9 @@ healthai/
 
 ### Local Development
 ```
-Frontend  → http://localhost:3000
-Backend   → http://localhost:8000
+Frontend  → http://localhost:5173
+Backend   → http://localhost:8005 (or 8000 if available)
+API Docs  → http://localhost:8005/docs
 MySQL     → http://localhost:3306
 ```
 
@@ -351,5 +352,6 @@ This project is built using **Google Antigravity** — an AI-powered IDE that us
 ---
 
 *Built with ❤️ using Google Antigravity*
-#   A D B M S _ P r o j e c t _ H e a l t h M o n e t r i n g S y s t e m _ w i t h _ A I _ i n t i g r a t i o n -  
+#   A D B M S _ P r o j e c t _ H e a l t h M o n e t r i n g S y s t e m _ w i t h _ A I _ i n t i g r a t i o n - 
+ 
  

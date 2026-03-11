@@ -75,6 +75,11 @@ docker-compose up --build -d
 | Backend  | http://localhost:8000      |
 | API Docs | http://localhost:8000/docs |
 
+> **Local Development Note (Windows):**
+> If port 8000 is stuck holding a phantom process, run backend on port 8005:
+> `uvicorn main:app --reload --port 8005`
+> To try to kill stuck process: `netstat -ano | findstr :8000` then `taskkill /PID <pid> /F`
+
 ### Stop / restart
 ```bash
 docker-compose down      # stop

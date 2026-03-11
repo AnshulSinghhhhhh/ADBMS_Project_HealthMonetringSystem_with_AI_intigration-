@@ -51,7 +51,7 @@ export default function LogVitals() {
 
             <form onSubmit={handleSubmit} className="card">
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.5rem' }}>
-                    {FIELDS.map(({ key, label, unit, type, placeholder, step }) => (
+                    {FIELDS.map(({ key, label, unit, type, placeholder, step, helper }) => (
                         <div key={key}>
                             <label style={{
                                 display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem',

@@ -156,6 +156,7 @@ class MedicationCreate(BaseModel):
     notes:         Optional[str] = None
     status:        Optional[str] = "pending"
     date:          str
+    end_date:      Optional[str] = None  # "YYYY-MM-DD" or None for ongoing
 
 
 class MedicationUpdate(BaseModel):
@@ -172,6 +173,7 @@ class MedicationResponse(BaseModel):
     notes:         Optional[str]
     status:        str
     date:          str
+    end_date:      Optional[str] = None
     created_at:    datetime
 
     model_config = {"from_attributes": True}

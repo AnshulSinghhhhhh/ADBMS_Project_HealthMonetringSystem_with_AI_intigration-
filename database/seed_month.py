@@ -100,7 +100,7 @@ def _john_vitals(day_offset: int) -> dict:
         "bp_diastolic": int(_rand(bp_diastolic_base, bp_diastolic_base + 8)),
         "spo2":         _rand(94, 98),
         "blood_sugar":  _rand(bs_lo, bs_hi),
-        "temperature":  _rand(36.4, 37.1),
+        "temperature":  _rand(97.5, 100.8),   # °F (slightly elevated)
     }
 
 
@@ -112,7 +112,7 @@ def _sarah_vitals(_day_offset: int) -> dict:
         "bp_diastolic": int(_rand(70, 80)),
         "spo2":         _rand(97, 99),
         "blood_sugar":  _rand(80, 115),
-        "temperature":  _rand(36.2, 36.9),
+        "temperature":  _rand(97.2, 98.4),    # °F (normal)
     }
 
 

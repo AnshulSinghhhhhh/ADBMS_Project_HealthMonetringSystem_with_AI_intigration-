@@ -59,31 +59,35 @@ def get_health_score(
     }
 
 
+from datetime import timedelta, datetime
+
 @router.get("/weekly-report")
 def get_weekly_report(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
     """
-    Generates (and persists) a weekly health summary using AI analysis.
-    Returns the summary text + the saved HealthScore record.
+    Generates a weekly health summary using AI analysis or returns a cached version if from last 24 hours.
     """
-    summary_text = generate_weekly_summary(user_id=current_user.user_id, db=db)
-
-    # Fetch the record that was just saved by generate_weekly_summary
-    latest_score = (
-        db.query(models.HealthScore)
-        .filter(models.HealthScore.user_id == current_user.user_id)
-        .order_by(models.HealthScore.generated_at.desc())
+    # Check for recent cached report (last 24 hours)
+    yesterday = datetime.utcnow() - timedelta(hours=24)
+    cached = db.query(models.HealthScore)\
+        .filter(models.HealthScore.user_id == current_user.user_id)\
+        .filter(models.HealthScore.generated_at >= yesterday)\
+        .order_by(models.HealthScore.generated_at.desc())\
         .first()
-    )
 
-    return {
-        "summary":    summary_text,
-        "score":      latest_score.score      if latest_score else None,
-        "risk_level": latest_score.risk_level if latest_score else None,
-        "generated_at": str(latest_score.generated_at) if latest_score else None,
-    }
+    if cached:
+        return {
+            "score": cached.score,
+            "risk_level": cached.risk_level,
+            "ai_summary": cached.ai_summary,
+            "generated_at": cached.generated_at.isoformat() if cached.generated_at else None
+        }
+
+    # No cached report — generate fresh one
+    summary = generate_weekly_summary(current_user.user_id, db)
+    return summary
 
 
 @router.get("/anomalies", response_model=List[schemas.AlertResponse])

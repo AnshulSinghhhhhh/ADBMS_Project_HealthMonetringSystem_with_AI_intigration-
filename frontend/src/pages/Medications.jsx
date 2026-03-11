@@ -1,10 +1,59 @@
 import { useState, useEffect } from 'react';
 import api from '../api/axios';
-import { Pill, Plus, CheckCircle, XCircle } from 'lucide-react';
+import { Pill, Plus, CheckCircle, XCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { formatDate } from '../utils/dateFormat';
 
-const EMPTY_FORM = { medicine_name: '', dosage: '', doses_per_day: 1, dose_times: ['08:00'], notes: '', date: '' };
+const DURATION_OPTIONS = [
+    { label: 'Ongoing (no end date)', value: 'ongoing' },
+    { label: '3 days', value: '3' },
+    { label: '5 days', value: '5' },
+    { label: '1 week', value: '7' },
+    { label: '2 weeks', value: '14' },
+    { label: '1 month', value: '30' },
+    { label: '3 months', value: '90' },
+    { label: 'Custom date', value: 'custom' },
+];
+
+const EMPTY_FORM = {
+    medicine_name: '', dosage: '', doses_per_day: 1, dose_times: ['08:00'],
+    notes: '', date: '', duration: 'ongoing', custom_end_date: '',
+};
 const QUICK_NOTES = ["After food", "Before food", "With water", "Empty stomach", "Before sleep"];
+
+function calcEndDate(startDate, duration, customDate) {
+    if (duration === 'ongoing') return null;
+    if (duration === 'custom') return customDate || null;
+    if (!startDate) return null;
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + parseInt(duration));
+    return d.toISOString().split('T')[0];
+}
+
+function getDaysUntil(dateStr) {
+    if (!dateStr) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const end = new Date(dateStr);
+    end.setHours(0, 0, 0, 0);
+    return Math.round((end - today) / (1000 * 60 * 60 * 24));
+}
+
+function EndDateBadge({ endDate }) {
+    if (!endDate) {
+        return <span style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.65rem', borderRadius: '9999px' }}>Ongoing</span>;
+    }
+    const days = getDaysUntil(endDate);
+    if (days < 0) {
+        return <span style={{ background: 'rgba(148,163,184,0.15)', color: '#94a3b8', fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.65rem', borderRadius: '9999px' }}>Completed</span>;
+    }
+    if (days === 0) {
+        return <span style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.65rem', borderRadius: '9999px' }}>Last dose today</span>;
+    }
+    if (days <= 3) {
+        return <span style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b', fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.65rem', borderRadius: '9999px' }}>Ends in {days} day{days === 1 ? '' : 's'}</span>;
+    }
+    return <span style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8', fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.65rem', borderRadius: '9999px' }}>Until {formatDate(endDate)}</span>;
+}
 
 export default function Medications() {
     const [meds, setMeds] = useState([]);
@@ -12,9 +61,15 @@ export default function Medications() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [showForm, setShowForm] = useState(false);
+    const [showCompleted, setShowCompleted] = useState(false);
 
     const load = () => api.get('/medications/today').then(r => setMeds(r.data)).finally(() => setLoading(false));
     useEffect(() => { load(); }, []);
+
+    // Split into active and completed
+    const today = new Date().toISOString().split('T')[0];
+    const activeMeds = meds.filter(m => !m.end_date || m.end_date >= today);
+    const completedMeds = meds.filter(m => m.end_date && m.end_date < today);
 
     const updateDoseStatus = async (med, doseIndex, newStatus) => {
         try {
@@ -23,17 +78,18 @@ export default function Medications() {
             const updatedStatusString = JSON.stringify(currentStatuses);
             await api.put(`/medications/update/${med.med_id}`, { status: updatedStatusString });
             setMeds(prev => prev.map(m => m.med_id === med.med_id ? { ...m, status: updatedStatusString } : m));
-        } catch (e) {
-            console.error("Failed to update status");
-        }
+        } catch (e) { console.error("Failed to update status"); }
     };
 
     const handleAdd = async e => {
         e.preventDefault();
         setSaving(true);
         try {
-            await api.post('/medications/add', { ...form, status: 'pending' });
-            setForm(EMPTY_FORM); setShowForm(false);
+            const end_date = calcEndDate(form.date, form.duration, form.custom_end_date);
+            const { duration, custom_end_date, ...rest } = form;
+            await api.post('/medications/add', { ...rest, end_date, status: 'pending' });
+            setForm(EMPTY_FORM);
+            setShowForm(false);
             load();
         } finally { setSaving(false); }
     };
@@ -57,12 +113,69 @@ export default function Medications() {
         setForm({ ...form, dose_times: newTimes });
     };
 
+    const MedCard = ({ m }) => {
+        let statuses = [];
+        let times = [];
+        try { statuses = JSON.parse(m.status); } catch { statuses = [m.status]; }
+        try { times = JSON.parse(m.dose_times); } catch { times = [m.schedule_time || 'Dose 1']; }
+
+        return (
+            <div key={m.med_id} className="card" style={{ marginBottom: '1rem', padding: '1.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <div style={{ background: 'rgba(139,92,246,0.2)', padding: '0.75rem', borderRadius: '0.75rem' }}>
+                            <Pill size={24} color="#8b5cf6" />
+                        </div>
+                        <div>
+                            <div style={{ fontWeight: 800, fontSize: '1.1rem' }}>{m.medicine_name}</div>
+                            <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                                {m.dosage} <span style={{ margin: '0 0.5rem' }}>•</span> Started {formatDate(m.date)}
+                            </div>
+                            {m.notes && <div style={{ fontSize: '0.8rem', marginTop: '0.35rem', fontStyle: 'italic', color: '#6366f1' }}>{m.notes}</div>}
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.4rem' }}>
+                        <div className="badge badge-info" style={{ fontWeight: 600 }}>{m.doses_per_day}x a day</div>
+                        <EndDateBadge endDate={m.end_date} />
+                    </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {times.map((t, i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.75rem', background: 'var(--bg-card2)', borderRadius: '0.5rem' }}>
+                            <div style={{ fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Dose {i + 1}:</span> {t}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <span className={`badge badge-${statuses[i] === 'taken' ? 'low' : statuses[i] === 'missed' ? 'high' : 'moderate'}`}>
+                                    {statuses[i] || 'pending'}
+                                </span>
+                                {statuses[i] === 'pending' && (
+                                    <div style={{ display: 'flex', gap: '0.3rem' }}>
+                                        <button className="btn btn-success" style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem' }}
+                                            onClick={() => updateDoseStatus(m, i, 'taken')} title="Mark Taken">
+                                            <CheckCircle size={14} />
+                                        </button>
+                                        <button className="btn btn-danger" style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem' }}
+                                            onClick={() => updateDoseStatus(m, i, 'missed')} title="Mark Missed">
+                                            <XCircle size={14} />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    };
+
     return (
         <div className="fade-in" style={{ maxWidth: '750px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.75rem' }}>
                 <div>
                     <h1 style={{ fontSize: '1.5rem', fontWeight: 800 }}>Medications</h1>
-                    <p style={{ color: 'var(--text-muted)', marginTop: '0.25rem' }}>Today's medication schedule.</p>
+                    <p style={{ color: 'var(--text-muted)', marginTop: '0.25rem' }}>Your active medication schedule.</p>
                 </div>
                 <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
                     <Plus size={16} /> Add Medication
@@ -88,13 +201,29 @@ export default function Medications() {
                         <div>
                             <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>Doses per day *</label>
                             <select className="input" value={form.doses_per_day} onChange={setDoseCount} style={{ width: '100%' }}>
-                                <option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={4}>4</option>
+                                <option value={1}>1</option><option value={2}>2</option>
+                                <option value={3}>3</option><option value={4}>4</option>
                             </select>
                         </div>
                         <div>
-                            <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>Date *</label>
+                            <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>Start Date *</label>
                             <input className="input" type="date" value={form.date} onChange={setField('date')} required style={{ width: '100%' }} />
                         </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: form.duration === 'custom' ? '1fr 1fr' : '1fr', gap: '1.25rem', marginBottom: '1.25rem' }}>
+                        <div>
+                            <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>Duration</label>
+                            <select className="input" value={form.duration} onChange={setField('duration')} style={{ width: '100%' }}>
+                                {DURATION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
+                        </div>
+                        {form.duration === 'custom' && (
+                            <div>
+                                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>End Date</label>
+                                <input className="input" type="date" value={form.custom_end_date} onChange={setField('custom_end_date')} style={{ width: '100%' }} />
+                            </div>
+                        )}
                     </div>
 
                     <div style={{ marginBottom: '1.25rem' }}>
@@ -128,64 +257,31 @@ export default function Medications() {
             )}
 
             {loading ? <p style={{ color: 'var(--text-muted)' }}>Loading…</p> :
-                meds.length === 0 ? (
+                activeMeds.length === 0 ? (
                     <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
                         <Pill size={40} style={{ margin: '0 auto 1rem', opacity: 0.3 }} />
-                        <p style={{ color: 'var(--text-muted)' }}>No medications scheduled for today.</p>
+                        <p style={{ color: 'var(--text-muted)' }}>No active medications. Click "Add Medication" to get started.</p>
                     </div>
-                ) : meds.map(m => {
-                    let statuses = [];
-                    let times = [];
-                    try { statuses = JSON.parse(m.status); } catch { statuses = [m.status]; }
-                    try { times = JSON.parse(m.dose_times); } catch { times = [m.schedule_time || 'Dose 1']; }
+                ) : activeMeds.map(m => <MedCard key={m.med_id} m={m} />)
+            }
 
-                    return (
-                        <div key={m.med_id} className="card" style={{ marginBottom: '1rem', padding: '1.25rem' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '1rem' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                    <div style={{ background: 'rgba(139,92,246,0.2)', padding: '0.75rem', borderRadius: '0.75rem' }}>
-                                        <Pill size={24} color="#8b5cf6" />
-                                    </div>
-                                    <div>
-                                        <div style={{ fontWeight: 800, fontSize: '1.1rem' }}>{m.medicine_name}</div>
-                                        <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
-                                            {m.dosage} <span style={{ margin: '0 0.5rem' }}>•</span> {formatDate(m.date)}
-                                        </div>
-                                        {m.notes && <div style={{ fontSize: '0.8rem', marginTop: '0.35rem', fontStyle: 'italic', color: '#6366f1' }}>{m.notes}</div>}
-                                    </div>
-                                </div>
-                                <div className="badge badge-info" style={{ fontWeight: 600 }}>{m.doses_per_day}x a day</div>
-                            </div>
-
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                                {times.map((t, i) => (
-                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.75rem', background: 'var(--bg-card2)', borderRadius: '0.5rem' }}>
-                                        <div style={{ fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Dose {i + 1}:</span> {t}
-                                        </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                            <span className={`badge badge-${statuses[i] === 'taken' ? 'low' : statuses[i] === 'missed' ? 'high' : 'moderate'}`}>
-                                                {statuses[i] || 'pending'}
-                                            </span>
-                                            {statuses[i] === 'pending' && (
-                                                <div style={{ display: 'flex', gap: '0.3rem' }}>
-                                                    <button className="btn btn-success" style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem' }}
-                                                        onClick={() => updateDoseStatus(m, i, 'taken')} title="Mark Taken">
-                                                        <CheckCircle size={14} />
-                                                    </button>
-                                                    <button className="btn btn-danger" style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem' }}
-                                                        onClick={() => updateDoseStatus(m, i, 'missed')} title="Mark Missed">
-                                                        <XCircle size={14} />
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    );
-                })}
+            {completedMeds.length > 0 && (
+                <div style={{ marginTop: '1.5rem' }}>
+                    <button
+                        onClick={() => setShowCompleted(c => !c)}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'none', border: 'none',
+                            color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 700,
+                            padding: '0.5rem 0', marginBottom: '0.75rem',
+                        }}>
+                        {showCompleted ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        Completed Medications ({completedMeds.length})
+                    </button>
+                    {showCompleted && completedMeds.map(m => (
+                        <div key={m.med_id} style={{ opacity: 0.55 }}><MedCard m={m} /></div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }

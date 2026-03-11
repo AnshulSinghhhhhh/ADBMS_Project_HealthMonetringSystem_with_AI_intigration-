@@ -11,6 +11,7 @@ from datetime import date
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -50,7 +51,11 @@ def get_today_medications(
         db.query(models.Medication)
         .filter(
             models.Medication.user_id == current_user.user_id,
-            models.Medication.date == today,
+            models.Medication.date <= today,           # started on or before today
+            or_(
+                models.Medication.end_date == None,    # ongoing (no end date)
+                models.Medication.end_date >= today,   # not yet expired
+            ),
         )
         .order_by(models.Medication.med_id.asc())
         .all()

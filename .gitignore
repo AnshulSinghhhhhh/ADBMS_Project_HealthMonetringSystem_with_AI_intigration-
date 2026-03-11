@@ -3,3 +3,4 @@ git_push_error.txt
 .DS_Store
 healthai.db
 __pycache__/
+*.log

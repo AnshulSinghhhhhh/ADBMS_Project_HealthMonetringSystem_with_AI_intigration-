@@ -78,9 +78,9 @@ def calculate_risk_score(vitals: dict) -> dict:
     score = (weighted_sum / total_weight * 100 / 100) if total_weight else 0.0
     score = round(min(100.0, max(0.0, score)), 2)
 
-    if score <= 40:
+    if score <= 25:
         risk_level = "low"
-    elif score <= 70:
+    elif score <= 55:
         risk_level = "moderate"
     else:
         risk_level = "high"
