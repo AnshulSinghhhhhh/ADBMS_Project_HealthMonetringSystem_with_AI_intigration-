@@ -52,10 +52,6 @@ def get_today_medications(
         .filter(
             models.Medication.user_id == current_user.user_id,
             models.Medication.date <= today,           # started on or before today
-            or_(
-                models.Medication.end_date == None,    # ongoing (no end date)
-                models.Medication.end_date >= today,   # not yet expired
-            ),
         )
         .order_by(models.Medication.med_id.asc())
         .all()
@@ -81,6 +77,55 @@ def update_medication_status(
         raise HTTPException(status_code=404, detail="Medication not found")
 
     med.status = payload.status
+    db.commit()
+    db.refresh(med)
+    return med
+
+
+@router.delete("/delete/{med_id}")
+def delete_medication(
+    med_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    med = (
+        db.query(models.Medication)
+        .filter(
+            models.Medication.med_id == med_id,
+            models.Medication.user_id == current_user.user_id,
+        )
+        .first()
+    )
+    if not med:
+        raise HTTPException(status_code=404, detail="Medication not found")
+    
+    db.delete(med)
+    db.commit()
+    return {"message": "Medication deleted successfully"}
+
+@router.put("/extend/{med_id}", response_model=schemas.MedicationResponse)
+def extend_medication(
+    med_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    med = (
+        db.query(models.Medication)
+        .filter(
+            models.Medication.med_id == med_id,
+            models.Medication.user_id == current_user.user_id,
+        )
+        .first()
+    )
+    if not med:
+        raise HTTPException(status_code=404, detail="Medication not found")
+    
+    med.end_date = None
+    med.date = date.today().isoformat()
+    # Reset status array for the new day
+    doses = med.doses_per_day
+    med.status = json.dumps(["pending"] * doses)
+    
     db.commit()
     db.refresh(med)
     return med

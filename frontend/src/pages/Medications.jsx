@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../api/axios';
-import { Pill, Plus, CheckCircle, XCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { Pill, Plus, CheckCircle, XCircle, ChevronDown, ChevronRight, Trash2, RefreshCw } from 'lucide-react';
 import { formatDate } from '../utils/dateFormat';
 
 const DURATION_OPTIONS = [
@@ -68,7 +68,13 @@ export default function Medications() {
 
     // Split into active and completed
     const today = new Date().toISOString().split('T')[0];
-    const activeMeds = meds.filter(m => !m.end_date || m.end_date >= today);
+    const activeMeds = meds
+        .filter(m => !m.end_date || m.end_date >= today)
+        .sort((a, b) => {
+            const hasPendingA = a.status.includes('pending') ? 1 : 0;
+            const hasPendingB = b.status.includes('pending') ? 1 : 0;
+            return hasPendingB - hasPendingA; // Pending comes first
+        });
     const completedMeds = meds.filter(m => m.end_date && m.end_date < today);
 
     const updateDoseStatus = async (med, doseIndex, newStatus) => {
@@ -79,6 +85,25 @@ export default function Medications() {
             await api.put(`/medications/update/${med.med_id}`, { status: updatedStatusString });
             setMeds(prev => prev.map(m => m.med_id === med.med_id ? { ...m, status: updatedStatusString } : m));
         } catch (e) { console.error("Failed to update status"); }
+    };
+
+    const handleDelete = async (med_id) => {
+        if (!window.confirm("Are you sure you want to remove this medication?")) return;
+        try {
+            await api.delete(`/medications/delete/${med_id}`);
+            load();
+        } catch (e) {
+            console.error("Failed to delete medication", e);
+        }
+    };
+
+    const handleExtend = async (med_id) => {
+        try {
+            await api.put(`/medications/extend/${med_id}`);
+            load();
+        } catch (e) {
+            console.error("Failed to extend medication", e);
+        }
     };
 
     const handleAdd = async e => {
@@ -119,9 +144,20 @@ export default function Medications() {
         try { statuses = JSON.parse(m.status); } catch { statuses = [m.status]; }
         try { times = JSON.parse(m.dose_times); } catch { times = [m.schedule_time || 'Dose 1']; }
 
+        const isCompleted = getDaysUntil(m.end_date) !== null && getDaysUntil(m.end_date) < 0;
+
         return (
-            <div key={m.med_id} className="card" style={{ marginBottom: '1rem', padding: '1.25rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '1rem' }}>
+            <div key={m.med_id} className="card" style={{ marginBottom: '1rem', padding: '1.25rem', position: 'relative' }}>
+                <button 
+                    onClick={() => handleDelete(m.med_id)}
+                    style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0.2rem' }}
+                    title="Remove Medication"
+                    onMouseOver={(e) => e.currentTarget.style.color = '#ef4444'}
+                    onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
+                >
+                    <Trash2 size={18} />
+                </button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '1rem', paddingRight: '2.5rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                         <div style={{ background: 'rgba(139,92,246,0.2)', padding: '0.75rem', borderRadius: '0.75rem' }}>
                             <Pill size={24} color="#8b5cf6" />
@@ -140,32 +176,43 @@ export default function Medications() {
                     </div>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    {times.map((t, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.75rem', background: 'var(--bg-card2)', borderRadius: '0.5rem' }}>
-                            <div style={{ fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Dose {i + 1}:</span> {t}
+                {isCompleted ? (
+                    <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+                        <button className="btn btn-primary" style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem', alignItems: 'center' }} onClick={() => handleExtend(m.med_id)}>
+                            <RefreshCw size={16} /> Continue Medication
+                        </button>
+                        <button className="btn btn-danger" style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '0.5rem', alignItems: 'center' }} onClick={() => handleDelete(m.med_id)}>
+                            <Trash2 size={16} /> Remove Medication
+                        </button>
+                    </div>
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {times.map((t, i) => (
+                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.75rem', background: 'var(--bg-card2)', borderRadius: '0.5rem' }}>
+                                <div style={{ fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Dose {i + 1}:</span> {t}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                    <span className={`badge badge-${statuses[i] === 'taken' ? 'low' : statuses[i] === 'missed' ? 'high' : 'moderate'}`}>
+                                        {statuses[i] || 'pending'}
+                                    </span>
+                                    {statuses[i] === 'pending' && (
+                                        <div style={{ display: 'flex', gap: '0.3rem' }}>
+                                            <button className="btn btn-success" style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem' }}
+                                                onClick={() => updateDoseStatus(m, i, 'taken')} title="Mark Taken">
+                                                <CheckCircle size={14} />
+                                            </button>
+                                            <button className="btn btn-danger" style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem' }}
+                                                onClick={() => updateDoseStatus(m, i, 'missed')} title="Mark Missed">
+                                                <XCircle size={14} />
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                <span className={`badge badge-${statuses[i] === 'taken' ? 'low' : statuses[i] === 'missed' ? 'high' : 'moderate'}`}>
-                                    {statuses[i] || 'pending'}
-                                </span>
-                                {statuses[i] === 'pending' && (
-                                    <div style={{ display: 'flex', gap: '0.3rem' }}>
-                                        <button className="btn btn-success" style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem' }}
-                                            onClick={() => updateDoseStatus(m, i, 'taken')} title="Mark Taken">
-                                            <CheckCircle size={14} />
-                                        </button>
-                                        <button className="btn btn-danger" style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem' }}
-                                            onClick={() => updateDoseStatus(m, i, 'missed')} title="Mark Missed">
-                                            <XCircle size={14} />
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                </div>
+                        ))}
+                    </div>
+                )}
             </div>
         );
     };
